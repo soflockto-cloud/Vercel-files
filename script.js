@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const newKeyBtn = document.getElementById('newKeyBtn');
     
     // Replace with your actual ad link URL
-    const YOUR_AD_LINK = 'https://your-ad-link-here.com';
+    const YOUR_AD_LINK = 'https://link-unlock.com/kn4ghtunlocker';
     adLink.href = YOUR_AD_LINK;
     
     // Handle ad link click
