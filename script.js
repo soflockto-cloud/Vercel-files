@@ -24,6 +24,7 @@ function startCountdownTimer(generatedKey) {
     // Save to localStorage
     localStorage.setItem('keyExpiryTime', expiryTime);
     localStorage.setItem('generatedKey', generatedKey);
+    localStorage.setItem('keyVerified', 'true'); // Mark as verified
     
     const timerElement = document.getElementById('timerDisplay');
     
@@ -32,9 +33,8 @@ function startCountdownTimer(generatedKey) {
         const timeLeft = expiryTime - now;
         
         if (timeLeft <= 0) {
-            timerElement.textContent = 'Key Expired!';
+            timerElement.textContent = '❌ Key Expired!';
             timerElement.style.color = '#dc3545';
-            document.getElementById('adLink').disabled = true;
             document.getElementById('copyBtn').disabled = true;
             document.getElementById('newKeyBtn').disabled = true;
             clearInterval(timerInterval);
@@ -45,7 +45,7 @@ function startCountdownTimer(generatedKey) {
         const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
         
-        timerElement.textContent = `⏱️ Valid for: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        timerElement.textContent = `⏱️ Expires in: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
         timerElement.style.color = hours > 6 ? '#28a745' : hours > 2 ? '#ffc107' : '#dc3545';
     }
     
@@ -69,8 +69,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Check for stored key on page load
     const storedKey = localStorage.getItem('generatedKey');
     const expiryTime = localStorage.getItem('keyExpiryTime');
+    const keyVerified = localStorage.getItem('keyVerified');
     
-    if (storedKey && expiryTime) {
+    if (storedKey && expiryTime && keyVerified === 'true') {
         const now = new Date().getTime();
         if (now < parseInt(expiryTime)) {
             generatedKey.textContent = storedKey;
@@ -82,57 +83,112 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             localStorage.removeItem('generatedKey');
             localStorage.removeItem('keyExpiryTime');
+            localStorage.removeItem('keyVerified');
         }
     }
     
-    // Track if user actually went to ad link
-    let adLinkOpened = false;
+    // Generate a unique verification token for this session
+    const verificationToken = 'verify_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+    localStorage.setItem('adVerificationToken', verificationToken);
+    localStorage.setItem('adVerificationTimestamp', Date.now());
+    localStorage.setItem('adCompleted', 'false'); // Start with false
     
     // Handle ad link click
     adLink.addEventListener('click', function(e) {
         e.preventDefault();
         
-        status.textContent = '⏳ Opening ad link... Please complete it and return here.';
+        status.textContent = '⏳ Opening ad link... Please complete the ENTIRE task on the other page.';
         status.style.color = '#667eea';
+        copyBtn.disabled = true;
+        newKeyBtn.disabled = true;
+        
+        // Create new verification token
+        const newToken = 'verify_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+        localStorage.setItem('adVerificationToken', newToken);
+        localStorage.setItem('adVerificationTimestamp', Date.now());
+        localStorage.setItem('adCompleted', 'false'); // Reset flag
+        
+        // Add verification token as URL parameter
+        const adLinkWithToken = YOUR_AD_LINK + (YOUR_AD_LINK.includes('?') ? '&' : '?') + 'ref=' + newToken;
         
         // Open ad link in new window
-        const adWindow = window.open(YOUR_AD_LINK, '_blank');
+        window.open(adLinkWithToken, '_blank');
         
-        // Check if user returned after some time
-        if (adWindow) {
-            adLinkOpened = true;
+        // Start polling for completion
+        startCompletionCheck();
+    });
+    
+    // Check for ad completion
+    function startCompletionCheck() {
+        let checkCount = 0;
+        const maxChecks = 600; // 10 minutes
+        
+        const completionInterval = setInterval(function() {
+            checkCount++;
             
-            // Wait for user to potentially close ad window and return
-            let checkAttempts = 0;
-            const checkInterval = setInterval(function() {
-                checkAttempts++;
+            // Check if ad completion was set by callback
+            const adCompleted = localStorage.getItem('adCompleted');
+            const verificationToken = localStorage.getItem('adVerificationToken');
+            const verificationTimestamp = localStorage.getItem('adVerificationTimestamp');
+            
+            // Check if verification expired (15 minutes)
+            const now = Date.now();
+            const isExpired = (now - parseInt(verificationTimestamp)) > (15 * 60 * 1000);
+            
+            if (isExpired) {
+                clearInterval(completionInterval);
+                status.textContent = '❌ Verification timeout. Please try again.';
+                status.style.color = '#dc3545';
+                copyBtn.disabled = false;
+                newKeyBtn.disabled = false;
+                return;
+            }
+            
+            // Check if callback set the flag
+            if (adCompleted === 'true' && verificationToken) {
+                clearInterval(completionInterval);
                 
-                // If user comes back to this window, show success
-                if (document.hasFocus()) {
-                    clearInterval(checkInterval);
-                    
-                    // Generate and display key
-                    const key = generateRandomKey();
-                    const formattedKey = formatKey(key);
-                    
-                    generatedKey.textContent = formattedKey;
-                    keyDisplay.classList.remove('hidden');
-                    status.textContent = '✓ Key generated successfully! Valid for 24 hours.';
-                    status.style.color = '#28a745';
-                    
-                    // Start 24-hour countdown timer
-                    startCountdownTimer(formattedKey);
-                }
+                // Generate and display key
+                const key = generateRandomKey();
+                const formattedKey = formatKey(key);
                 
-                // Stop checking after 5 minutes if user doesn't return
-                if (checkAttempts > 300) {
-                    clearInterval(checkInterval);
-                    if (!adLinkOpened) {
-                        status.textContent = '⚠️ Please complete the ad link and return to this page.';
-                        status.style.color = '#ffc107';
-                    }
-                }
-            }, 1000);
+                generatedKey.textContent = formattedKey;
+                keyDisplay.classList.remove('hidden');
+                status.textContent = '✓ Ad completed! Key generated successfully! Valid for 24 hours.';
+                status.style.color = '#28a745';
+                copyBtn.disabled = false;
+                newKeyBtn.disabled = false;
+                
+                // Start 24-hour countdown timer
+                startCountdownTimer(formattedKey);
+                
+                // Clean up
+                localStorage.removeItem('adCompleted');
+                localStorage.removeItem('adVerificationToken');
+                
+                return;
+            }
+            
+            // Stop checking after max attempts
+            if (checkCount > maxChecks) {
+                clearInterval(completionInterval);
+                status.textContent = '⚠️ Ad completion not detected. Please try again.';
+                status.style.color = '#ffc107';
+                copyBtn.disabled = false;
+                newKeyBtn.disabled = false;
+            }
+        }, 1000);
+    }
+    
+    // Listen for messages from callback
+    window.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'AD_COMPLETED') {
+            const token = event.data.token;
+            const storedToken = localStorage.getItem('adVerificationToken');
+            
+            if (token === storedToken) {
+                localStorage.setItem('adCompleted', 'true');
+            }
         }
     });
     
@@ -141,7 +197,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const key = generatedKey.textContent;
         navigator.clipboard.writeText(key).then(function() {
             const originalText = copyBtn.textContent;
-            copyBtn.textContent = 'Copied!';
+            copyBtn.textContent = '✓ Copied!';
             copyBtn.style.background = '#28a745';
             
             setTimeout(function() {
@@ -153,21 +209,26 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Generate new key
+    // Generate new key (only if already verified once)
     newKeyBtn.addEventListener('click', function() {
-        const key = generateRandomKey();
-        const formattedKey = formatKey(key);
-        generatedKey.textContent = formattedKey;
-        
-        // Update stored key and expiry time
-        const expiryTime = new Date().getTime() + (24 * 60 * 60 * 1000);
-        localStorage.setItem('keyExpiryTime', expiryTime);
-        localStorage.setItem('generatedKey', formattedKey);
-        
-        // Restart timer
-        startCountdownTimer(formattedKey);
-        
-        status.textContent = '✓ New key generated! Timer reset to 24 hours.';
-        status.style.color = '#28a745';
+        if (localStorage.getItem('keyVerified') === 'true') {
+            const key = generateRandomKey();
+            const formattedKey = formatKey(key);
+            generatedKey.textContent = formattedKey;
+            
+            // Update stored key and expiry time
+            const newExpiryTime = new Date().getTime() + (24 * 60 * 60 * 1000);
+            localStorage.setItem('keyExpiryTime', newExpiryTime);
+            localStorage.setItem('generatedKey', formattedKey);
+            
+            // Restart timer
+            startCountdownTimer(formattedKey);
+            
+            status.textContent = '✓ New key generated! Timer reset to 24 hours.';
+            status.style.color = '#28a745';
+        } else {
+            status.textContent = '❌ Must complete ad link first!';
+            status.style.color = '#dc3545';
+        }
     });
 });
