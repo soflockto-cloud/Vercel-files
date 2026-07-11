@@ -79,7 +79,6 @@ document.addEventListener('DOMContentLoaded', function() {
             startCountdownTimer(storedKey);
             status.textContent = '✓ Your existing key is still valid!';
             status.style.color = '#28a745';
-            return;
         } else {
             localStorage.removeItem('generatedKey');
             localStorage.removeItem('keyExpiryTime');
@@ -192,22 +191,60 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Copy to clipboard
-    copyBtn.addEventListener('click', function() {
-        const key = generatedKey.textContent;
-        navigator.clipboard.writeText(key).then(function() {
-            const originalText = copyBtn.textContent;
+    // Copy to clipboard - FIXED VERSION
+    copyBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const keyWithoutHyphens = generatedKey.textContent.replace(/-/g, '');
+        
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(keyWithoutHyphens).then(function() {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '✓ Copied!';
+                copyBtn.style.background = '#28a745';
+                copyBtn.style.color = 'white';
+                
+                setTimeout(function() {
+                    copyBtn.textContent = originalText;
+                    copyBtn.style.background = '#667eea';
+                    copyBtn.style.color = 'white';
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Clipboard error:', err);
+                fallbackCopy(keyWithoutHyphens);
+            });
+        } else {
+            fallbackCopy(keyWithoutHyphens);
+        }
+    });
+    
+    // Fallback copy method for older browsers
+    function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
             copyBtn.textContent = '✓ Copied!';
             copyBtn.style.background = '#28a745';
+            copyBtn.style.color = 'white';
             
             setTimeout(function() {
-                copyBtn.textContent = originalText;
+                copyBtn.textContent = 'Copy to Clipboard';
                 copyBtn.style.background = '#667eea';
+                copyBtn.style.color = 'white';
             }, 2000);
-        }).catch(function(err) {
-            console.error('Failed to copy:', err);
-        });
-    });
+        } catch (err) {
+            console.error('Fallback copy failed:', err);
+            status.textContent = '❌ Copy failed. Try manual copy.';
+            status.style.color = '#dc3545';
+        }
+        document.body.removeChild(textarea);
+    }
     
     // Generate new key (only if already verified once)
     newKeyBtn.addEventListener('click', function() {
